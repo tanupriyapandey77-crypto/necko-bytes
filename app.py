@@ -7,6 +7,7 @@ from datetime import datetime
 import requests
 from PIL import Image
 import io
+import base64
 
 # Firebase setup
 if not firebase_admin._apps:
@@ -32,8 +33,12 @@ if "messages" not in st.session_state:
         }
     ]
 
+if "generated_images" not in st.session_state:
+    st.session_state.generated_images = []
+
 if st.button("🗑️ Clear Chat"):
     st.session_state.messages = [st.session_state.messages[0]]
+    st.session_state.generated_images = []
     st.rerun()
 
 # Image generation function
@@ -50,10 +55,15 @@ def generate_image(prompt):
     except Exception as e:
         return None, str(e)
 
+# Display chat messages
 for msg in st.session_state.messages:
     if msg["role"] != "system":
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            if msg.get("type") == "image":
+                img_data = base64.b64decode(msg["content"])
+                st.image(Image.open(io.BytesIO(img_data)), caption=msg.get("caption", ""))
+            else:
+                st.markdown(msg["content"])
 
 # Image generation section
 st.divider()
@@ -63,7 +73,17 @@ if st.button("Generate Image!!"):
     with st.spinner("Necko Bytes is painting... 🎨"):
         image, error = generate_image(image_prompt)
         if image:
-            st.image(image, caption=image_prompt)
+            # Save image to session
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            img_b64 = base64.b64encode(buf.getvalue()).decode()
+            st.session_state.messages.append({
+                "role": "assistant",
+                "type": "image",
+                "content": img_b64,
+                "caption": image_prompt
+            })
+            st.rerun()
         else:
             st.error(f"Failed!! {error}")
 
@@ -76,7 +96,7 @@ if prompt := st.chat_input("Talk to Necko Bytes..."):
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
-        messages=st.session_state.messages
+        messages=[m for m in st.session_state.messages if m.get("type") != "image"]
     )
 
     reply = response.choices[0].message.content
