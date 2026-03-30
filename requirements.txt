@@ -1,3 +1,10 @@
 streamlit
 groq
 firebase-admin
+Pillow
+requests
+PyPDF2
+python-docx
+replicate
+SpeechRecognition
+pyaudio
