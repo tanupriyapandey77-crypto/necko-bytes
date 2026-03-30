@@ -174,7 +174,6 @@ with st.sidebar:
         st.session_state.messages = [SYSTEM_PROMPT]
         st.rerun()
 
-    st.caption(f"Session: {st.session_state.session_id[:8]}...")
 
 # Main area
 st.title("Necko Bytes 🐱✨")
