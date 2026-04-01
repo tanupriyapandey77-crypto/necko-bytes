@@ -14,7 +14,7 @@ st.title("🔐 Necko Bytes Admin Dashboard")
 
 password = st.text_input("Enter admin password", type="password")
 
-if password == "necko-admin-2024":
+if password == st.secrets["admin"]["password"]:
     st.success("Welcome boss!! 😏")
 
     chats = list(db.collection("chats").stream())
