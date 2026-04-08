@@ -10,10 +10,9 @@ import io
 import base64
 import PyPDF2
 import docx
-import os
-import speech_recognition as sr
+import pandas as pd  # ✅ BUG 2 FIXED — moved to top
 
-# Firebase setup
+# ✅ Firebase setup — safe single init
 if not firebase_admin._apps:
     cred = credentials.Certificate(dict(st.secrets["firebase"]))
     firebase_admin.initialize_app(cred)
@@ -71,6 +70,17 @@ def save_message(role, content):
     except Exception as e:
         st.toast(f"❌ Save failed: {e}")
 
+# ✅ BUG 3 FIXED — Clear Chat now also deletes from Firebase
+def clear_chat_from_firebase(session_id):
+    try:
+        msgs_ref = db.collection("chats").document(session_id).collection("messages")
+        docs = msgs_ref.stream()
+        for doc in docs:
+            doc.reference.delete()
+        db.collection("chats").document(session_id).delete()
+    except Exception as e:
+        st.toast(f"❌ Firebase clear failed: {e}")
+
 def generate_image(prompt):
     API_URL = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
@@ -126,19 +136,21 @@ def analyse_image_file(image_file, question):
     )
     return response.choices[0].message.content
 
-def voice_to_text():
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.info("Listening... speak now!! 🎤")
-        r.adjust_for_ambient_noise(source, duration=1)
-        audio = r.listen(source, timeout=10)
-    try:
-        text = r.recognize_google(audio)
-        return text
-    except sr.UnknownValueError:
-        return None
-    except sr.RequestError:
-        return None
+# ✅ BUG 4 FIXED — Voice input replaced with st.audio_input (works on Streamlit Cloud)
+def handle_voice_input():
+    st.info("Record your voice below 🎤")
+    audio_data = st.audio_input("Click to record")
+    if audio_data is not None:
+        import speech_recognition as sr
+        r = sr.Recognizer()
+        audio_bytes = audio_data.read()
+        audio_sr = sr.AudioData(audio_bytes, sample_rate=44100, sample_width=2)
+        try:
+            text = r.recognize_google(audio_sr)
+            return text
+        except:
+            return None
+    return None
 
 def web_search(query):
     url = f"https://api.duckduckgo.com/?q={query}&format=json&no_html=1"
@@ -170,10 +182,12 @@ with st.sidebar:
 
     st.divider()
 
+    # ✅ BUG 3 FIXED — Clear Chat now wipes Firebase too
     if st.button("🗑️ Clear Chat"):
+        clear_chat_from_firebase(st.session_state.session_id)
         st.session_state.messages = [SYSTEM_PROMPT]
+        st.session_state.session_id = str(uuid.uuid4())  # fresh session
         st.rerun()
-
 
 # Main area
 st.title("Necko Bytes 🐱✨")
@@ -244,24 +258,20 @@ elif mode == "🖼️ Analyse Image":
 
 elif mode == "🎤 Voice Input":
     st.divider()
-    st.info("Click the button and speak — Necko Bytes is listening!! 🎤")
-    if st.button("🎤 Start Listening!!"):
-        with st.spinner("Listening..."):
-            text = voice_to_text()
-            if text:
-                st.success(f"You said: {text}")
-                st.session_state.messages.append({"role": "user", "content": text})
-                response = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[m for m in st.session_state.messages if m.get("type") != "image"]
-                )
-                reply = response.choices[0].message.content
-                st.session_state.messages.append({"role": "assistant", "content": reply})
-                save_message("user", text)
-                save_message("assistant", reply)
-                st.rerun()
-            else:
-                st.error("Couldn't hear anything!! Try again 🎤")
+    # ✅ BUG 4 FIXED — uses st.audio_input instead of Microphone()
+    text = handle_voice_input()
+    if text:
+        st.success(f"You said: {text}")
+        st.session_state.messages.append({"role": "user", "content": text})
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[m for m in st.session_state.messages if m.get("type") != "image"]
+        )
+        reply = response.choices[0].message.content
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+        save_message("user", text)
+        save_message("assistant", reply)
+        st.rerun()
 
 elif mode == "🌐 Web Search":
     st.divider()
@@ -287,8 +297,7 @@ elif mode == "📊 Analyse CSV":
     csv_question = st.text_input("What do you want to know about this data?")
     if st.button("Analyse Data!!") and uploaded_csv:
         with st.spinner("Analysing data... 📊"):
-            import pandas as pd
-            df = pd.read_csv(uploaded_csv)
+            df = pd.read_csv(uploaded_csv)  # ✅ BUG 2 FIXED — no inline import needed
             st.dataframe(df.head(10))
             data_summary = f"Columns: {list(df.columns)}\nShape: {df.shape}\nSample:\n{df.head(20).to_string()}"
             q = csv_question if csv_question else "Analyse this data and give key insights!!"
