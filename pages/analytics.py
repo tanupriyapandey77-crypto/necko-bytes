@@ -143,4 +143,7 @@ st.divider()
 
 # ── Raw data table ─────────────────────────────────────────────
 with st.expander("🗃️ View Raw Data Table"):
-    st.dataframe(df[["session_id", "role", "content", "timestamp"]].sort_values("timestamp", ascending=False))
+    display_df = df[["session_id", "role", "content", "timestamp"]].copy()
+    display_df["timestamp"] = display_df["timestamp"].astype(str)
+    display_df["session_id"] = display_df["session_id"].str[:8] + "..."
+    st.dataframe(display_df.sort_values("timestamp", ascending=False), use_container_width=True)
